@@ -5,14 +5,27 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import pandas as pd
 import nltk
-nltk.download('punkt')  # Download the sentence tokenizer
 from nltk.tokenize import sent_tokenize
+
+# Ensure the punkt tokenizer is downloaded
+nltk.download('punkt')
 
 # Set up Chrome options
 chrome_options = webdriver.ChromeOptions()
+chrome_options.add_argument('--headless')  # Running in headless mode
+chrome_options.add_argument('--no-sandbox')
 chrome_options.add_argument('--ignore-certificate-errors')
 chrome_options.add_argument('--disable-popup-blocking')
 chrome_options.add_argument('--disable-infobars')
+
+# Function to summarize the abstract
+def summarize_abstract(abstract):
+    sentences = sent_tokenize(abstract)
+    sentence_scores = {sentence: len(sentence.split()) for sentence in sentences}
+    num_sentences_in_summary = 2
+    summary_sentences = [sentence for sentence, score in sorted(sentence_scores.items(), key=lambda x: x[1], reverse=True)[:num_sentences_in_summary]]
+    summary = ' '.join(summary_sentences)
+    return summary
 
 def build_search_url(conference, keywords):
     # Define base URLs for each conference
@@ -42,74 +55,81 @@ def build_search_url(conference, keywords):
 
     return search_url
 
-# Example usage
 
-conference_name = "IROS"  # Change this to the conference you want to search from
-search_keywords = ["multi-agent", "multirobot", "dynamic environment"]  # Add your keywords here
-result_url = build_search_url(conference_name, search_keywords)
+def scrape_papers(conference, keywords):
+    result_url = build_search_url(conference, keywords)
+    if "Invalid conference name." in result_url:
+        return "Invalid conference name."
+    download_folder = '/home/rchandra/Downloads/papers/'
 
-# Create a Selenium WebDriver instance for Chrome with the defined options
-# Define the path where you want to save the downloaded files
-download_folder = 'C:\\Users\\ashwi\\OneDrive\\Desktop\\Coding Files\\files\\Python Lit Review Project - Copy'
+    # Specify the desired file name
+    file_name = 'testpaper.csv'  # Change this to your desired file name
 
-# Specify the desired file name
-file_name = 'testpaper.csv'  # Change this to your desired file name
+    # Set Chrome options to automatically download files to the specified folder with the custom file name
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_experimental_option("prefs", {
+        "download.default_directory": download_folder,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "safebrowsing.enabled": True
+    })
 
-# Set Chrome options to automatically download files to the specified folder with the custom file name
-chrome_options = webdriver.ChromeOptions()
-chrome_options.add_experimental_option("prefs", {
-    "download.default_directory": download_folder,
-    "download.prompt_for_download": False,
-    "download.directory_upgrade": True,
-    "safebrowsing.enabled": True
-})
+    # Create a ChromeDriver instance
+    driver = webdriver.Chrome(options=chrome_options)
 
-# Create a ChromeDriver instance
-driver = webdriver.Chrome(options=chrome_options)
+    # Open the web page and interact with elements
+    driver.get(result_url)
 
-# Open the web page and interact with elements
-driver.get(result_url)
+    max_wait_time = 20  # Adjust as needed
 
-max_wait_time = 20  # Adjust as needed
+    wait = WebDriverWait(driver, max_wait_time)
+    element = wait.until(EC.element_to_be_clickable((By.XPATH, "/html/body/div[5]/div/div/div/3/div/xpl-root/main/div/xpl-search-results/div/div/1/div/ul/li[3]/xpl-export-search-results/button/a")))
+    element.click()
 
-wait = WebDriverWait(driver, max_wait_time)
-element = wait.until(EC.element_to_be_clickable((By.XPATH, "/html/body/div[5]/div/div/div/3/div/xpl-root/main/div/xpl-search-results/div/div/1/div/ul/li[3]/xpl-export-search-results/button/a")))
-element.click()
+    wait = WebDriverWait(driver, max_wait_time)
+    element = wait.until(EC.element_to_be_clickable((By.XPATH, "/html/body/ngb-modal-window/div/div/div[2]/div/div/div[2]/button[2]")))
+    element.click()
 
-wait = WebDriverWait(driver, max_wait_time)
-element = wait.until(EC.element_to_be_clickable((By.XPATH, "/html/body/ngb-modal-window/div/div/div[2]/div/div/div[2]/button[2]")))
-element.click()
+    sleep(5) #pause for testing
 
-sleep(5) #pause for testing
+    # Load the massive list CSV file
+    massive_list = pd.read_csv("testpaper.csv")
 
-# Load the massive list CSV file
-massive_list = pd.read_csv("testpaper.csv")
+    # Keep only the columns of interest
+    narrowed_list = massive_list[["Document Title", "Authors", "Publication Year", "PDF Link", "Abstract"]]
 
-# Keep only the columns of interest
-narrowed_list = massive_list[["Document Title", "Authors", "Publication Year", "PDF Link", "Abstract"]]
+    # Add a new column "Implementation?" with values "YES" or "NO" based on the presence of "github" in the abstract
+    narrowed_list["Implementation?"] = narrowed_list["Abstract"].str.contains("github", case=False, na=False).replace({True: "YES", False: "NO"})
 
-# Add a new column "Implementation?" with values "YES" or "NO" based on the presence of "github" in the abstract
-narrowed_list["Implementation?"] = narrowed_list["Abstract"].str.contains("github", case=False, na=False).replace({True: "YES", False: "NO"})
+    # Function to summarize the abstract
+    def summarize_abstract(abstract):
+        sentences = sent_tokenize(abstract)
+        sentence_scores = {sentence: len(sentence.split()) for sentence in sentences}
+        num_sentences_in_summary = 2
+        summary_sentences = [sentence for sentence, score in sorted(sentence_scores.items(), key=lambda x: x[1], reverse=True)[:num_sentences_in_summary]]
+        summary = ' '.join(summary_sentences)
+        return summary
 
-# Function to summarize the abstract
-def summarize_abstract(abstract):
-    sentences = sent_tokenize(abstract)
-    sentence_scores = {sentence: len(sentence.split()) for sentence in sentences}
-    num_sentences_in_summary = 2
-    summary_sentences = [sentence for sentence, score in sorted(sentence_scores.items(), key=lambda x: x[1], reverse=True)[:num_sentences_in_summary]]
-    summary = ' '.join(summary_sentences)
-    return summary
+    # Apply the summarize_abstract function to create the "Abstract Summary" column
+    narrowed_list["Abstract Summary"] = narrowed_list["Abstract"].apply(summarize_abstract)
 
-# Apply the summarize_abstract function to create the "Abstract Summary" column
-narrowed_list["Abstract Summary"] = narrowed_list["Abstract"].apply(summarize_abstract)
+    # Remove the original "Abstract" column
+    narrowed_list = narrowed_list[["Document Title", "Authors", "Publication Year", "PDF Link", "Implementation?", "Abstract Summary"]]
 
-# Remove the original "Abstract" column
-narrowed_list = narrowed_list[["Document Title", "Authors", "Publication Year", "PDF Link", "Implementation?", "Abstract Summary"]]
+    # Save the simplified list with the abstract summary to a new CSV file
+    narrowed_list.to_csv("scrapedresults.csv", index=False)
 
-# Save the simplified list with the abstract summary to a new CSV file
-narrowed_list.to_csv("scrapedresults.csv", index=False)
+    driver.quit()
+    return narrowed_list.to_dict(orient='records')
 
-driver.quit()
+
+
+# ################# MAIN #################################
+# conference_name = "IROS"  # Change this to the conference you want to search from
+# search_keywords = ["multi-agent", "multirobot", "dynamic environment"]  # Add your keywords here
+# result_url = build_search_url(conference_name, search_keywords)
+
+
 
 
 
