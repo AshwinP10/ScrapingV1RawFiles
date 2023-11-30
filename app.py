@@ -10,9 +10,12 @@ def index():
 @app.route('/scrape', methods=['POST'])
 def scrape():
     conference = request.form.get('conference')
-    keywords = request.form.get('keywords').split(',')  # Splitting the keywords by comma
+    keywords = request.form.get('keywords').split(',')
     results = scrapingsel.scrape_papers(conference, keywords)
-    return jsonify(results)  # Return results as JSON for simplicity
+    return render_template('index.html', results=results)
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+
