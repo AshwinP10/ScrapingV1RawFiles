@@ -1,3 +1,5 @@
+import sys
+import os
 from selenium import webdriver
 from time import sleep
 from selenium.webdriver.common.by import By
@@ -60,19 +62,23 @@ def scrape_papers(conference, keywords):
     result_url = build_search_url(conference, keywords)
     if "Invalid conference name." in result_url:
         return "Invalid conference name."
-    download_folder = '/home/rchandra/Downloads/papers/'
 
     # Specify the desired file name
-    file_name = 'testpaper.csv'  # Change this to your desired file name
+    download_folder = r'C:\Users\ashwi\OneDrive\Desktop\Coding Files\files\Python Lit Review Project\ScrapingV1RawFiles-main\ScrapingV1RawFiles-main'
+    desired_filename = 'testingmassivelist.csv'
 
     # Set Chrome options to automatically download files to the specified folder with the custom file name
     chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_experimental_option("prefs", {
-        "download.default_directory": download_folder,
-        "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
-        "safebrowsing.enabled": True
-    })
+    prefs = {
+    "download.default_directory": download_folder,
+    "download.prompt_for_download": False,
+    "download.directory_upgrade": True,
+    "safebrowsing.enabled": True
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
+
+    # Set default filename separately
+    chrome_options.add_argument(f"download.default_filename={desired_filename}")
 
     # Create a ChromeDriver instance
     driver = webdriver.Chrome(options=chrome_options)
@@ -83,7 +89,7 @@ def scrape_papers(conference, keywords):
     max_wait_time = 20  # Adjust as needed
 
     wait = WebDriverWait(driver, max_wait_time)
-    element = wait.until(EC.element_to_be_clickable((By.XPATH, "/html/body/div[5]/div/div/div/3/div/xpl-root/main/div/xpl-search-results/div/div/1/div/ul/li[3]/xpl-export-search-results/button/a")))
+    element = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="xplMainContent"]/div[1]/div[1]/ul/li[3]/xpl-export-search-results/button')))
     element.click()
 
     wait = WebDriverWait(driver, max_wait_time)
@@ -92,6 +98,23 @@ def scrape_papers(conference, keywords):
 
     sleep(5) #pause for testing
 
+    max_wait_time = 60  # seconds
+    for _ in range(max_wait_time):
+        # Check if the file exists in the downloads folder
+        files = [f for f in os.listdir(download_folder) if f.endswith('.csv')]
+
+        if files:
+            file_path = os.path.join(download_folder, files[0])
+            break
+
+        sleep(1)
+
+    # Rename the file to 'testingmassivelist.csv'
+    new_file_path = os.path.join(download_folder, 'testpaper.csv')
+    os.rename(file_path, new_file_path)
+
+    sleep(1)
+
     # Load the massive list CSV file
     massive_list = pd.read_csv("testpaper.csv")
 
@@ -99,7 +122,24 @@ def scrape_papers(conference, keywords):
     narrowed_list = massive_list[["Document Title", "Authors", "Publication Year", "PDF Link", "Abstract"]]
 
     # Add a new column "Implementation?" with values "YES" or "NO" based on the presence of "github" in the abstract
-    narrowed_list["Implementation?"] = narrowed_list["Abstract"].str.contains("github", case=False, na=False).replace({True: "YES", False: "NO"})
+    # Add a new column "Implementation?" with the GitHub link or "NO" if no GitHub link is found
+    # Function to find the GitHub link in the abstract
+    def find_github_link(abstract):
+        # Use a regular expression to find a GitHub link in the abstract
+        import re
+        github_pattern = re.compile(r'https?://github.com/[^\s]+')
+        match = github_pattern.search(abstract)
+
+        if match:
+            return match.group()
+        else:
+            return "NO"
+
+    # Add a new column "Implementation?" with the GitHub link or "NO" if no GitHub link is found
+    narrowed_list["Implementation?"] = narrowed_list["Abstract"].apply(find_github_link)
+
+
+
 
     # Function to summarize the abstract
     def summarize_abstract(abstract):
@@ -120,6 +160,19 @@ def scrape_papers(conference, keywords):
     narrowed_list.to_csv("scrapedresults.csv", index=False)
 
     driver.quit()
+
+        # Remove the original "testpaper.csv" file
+    # Remove the original "testpaper.csv" file
+    try:
+        os.remove("testpaper.csv")
+    except FileNotFoundError:
+        pass  # File not found, nothing to delete
+
+    # Remove the original "scrapedresults.csv" file
+    try:
+        os.remove("scrapedresults.csv")
+    except FileNotFoundError:
+        pass  # File not found, nothing to delete
     return narrowed_list.to_dict(orient='records')
 
 
