@@ -9,13 +9,16 @@ def index():
 
 @app.route('/scrape', methods=['POST'])
 def scrape():
-    conference = request.form.get('conference')
-    keywords = request.form.get('keywords').split(',')
-    results = scrapingsel.scrape_papers(conference, keywords)
+ # Retrieve form data
+    conference = request.form['conference']
+    keywords = request.form['keywords'].split(',')
+    sort_preference = request.form['sort']
+
+    # Call the scraping function with the sort preference
+    results = scrapingsel.scrape_papers(conference, keywords, sort_preference)
+
+    # Render your template with results
     return render_template('index.html', results=results)
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
-
-
+    app.run(debug=True) 
